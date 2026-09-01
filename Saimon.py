@@ -36,7 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8716958222:AAHgYYcicw1KQUYewlOJPF0RHaFy9CGCct0"
+BOT_TOKEN = "8385272773:AAFStG5g46YkVPMCyjwdNlERvrF_fXUzRVY"
 OWNER_USER_ID = 8064395854  
 
 async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
