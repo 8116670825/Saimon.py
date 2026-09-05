@@ -1,93 +1,121 @@
-import logging
+import os
 import sys
-from flask import Flask
+import logging
+import time
 from threading import Thread
+from flask import Flask
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ChatJoinRequestHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, ChatMemberHandler, ContextTypes
 from telegram.constants import ChatMemberStatus
+from telegram.error import NetworkError, TimedOut, Conflict
 
-flask_app = Flask('')
-
-@flask_app.route('/')
-def home():
-    return "Join Request Anti-Premium Bot is active and running!"
-
-@flask_app.route('/healthz')
-def health_check():
-    return "OK", 200
-
-def run_flask():
-    try:
-        flask_app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
-    except Exception as e:
-        print(f"Flask server fatal error: {e}", file=sys.stderr)
-
-def keep_alive():
-    try:
-        t = Thread(target=run_flask, daemon=True)
-        t.start()
-    except Exception as e:
-        print(f"Thread error: {e}", file=sys.stderr)
-
+# लॉगिंग सेटअप
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    handlers=[logging.StreamHandler(sys.stdout)]
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = "8385272773:AAFStG5g46YkVPMCyjwdNlERvrF_fXUzRVY"
+# फ्लास्क हेल्थ-चेक सर्वर (रेंडर के लिए)
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def home() -> str:
+    return "Bot is active and running smoothly!", 200
+
+@flask_app.route('/healthz')
+def health_check() -> str:
+    return "OK", 200
+
+def run_flask() -> None:
+    try:
+        port = int(os.environ.get("PORT", 10000))
+        flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    except Exception as e:
+        logger.error(f"Flask server error: {e}")
+
+def keep_alive() -> None:
+    try:
+        thread = Thread(target=run_flask, daemon=True)
+        thread.start()
+    except Exception as e:
+        logger.error(f"Keep-alive thread error: {e}")
+
+# क्रेडेंशियल्स
+BOT_TOKEN = "8716958222:AAGwJB4bjQhcexbEo_rEdKAeZ-CwBwQzMok"
 OWNER_USER_ID = 8064395854  
 
-async def handle_join_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+checked_users_cache = set()
+
+async def live_stream_instant_ban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
-        join_request = update.chat_join_request
-        if not join_request:
+        if not update or not update.chat_member:
             return
 
-        chat_id = join_request.chat.id
-        user = join_request.from_user
-
-        if not user:
+        chat_member_update = update.chat_member
+        chat = chat_member_update.chat
+        new_member = chat_member_update.new_chat_member
+        
+        if not chat or not new_member or not new_member.user:
             return
 
-        if user.id == OWNER_USER_ID:
-            logger.info(f"[SAFE OWNER] Bot Owner join request allowed safely: {user.full_name} ({user.id})")
-            await join_request.approve()
+        user = new_member.user
+        user_id = user.id
+
+        if user_id == OWNER_USER_ID or user_id in checked_users_cache:
+            return
+
+        checked_users_cache.add(user_id)
+
+        status = new_member.status
+        if status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
             return
 
         if getattr(user, "is_premium", False):
             try:
-                await join_request.approve()
-                await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
-                logger.warning(f"[ULTRA FAST BAN] Approved and instantly banned premium user: {user.full_name} (ID: {user.id})")
-            except Exception as ban_err:
-                logger.error(f"Failed to execute join request ban for premium user {user.id}: {ban_err}")
-        else:
-            logger.info(f"[SAFE USER] Approving normal non-premium user: {user.full_name} ({user.id})")
-            await join_request.approve()
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=user_id)
+                logger.info(f"Instant-banned premium user ID: {user_id} from chat ID: {chat.id}")
+            except Exception as ban_error:
+                logger.error(f"Could not ban user {user_id}: {ban_error}")
 
     except Exception as e:
-        logger.error(f"Critical unhandled exception in handle_join_request: {e}", exc_info=True)
+        logger.error(f"Error inside live_stream_instant_ban: {e}")
 
-def main():
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """लॉग्स में एरर को दबाने और क्रैश रोकने के लिए स्पेशल एरर हैंडलर"""
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
+
+def main() -> None:
     keep_alive()
-    logger.info("Flask keep-alive background thread initialized.")
+    time.sleep(1)
 
-    try:
-        telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
-        telegram_app.add_handler(ChatJoinRequestHandler(handle_join_request))
-
-        logger.info("Bot is active and polling securely...")
-        
-        telegram_app.run_polling(
-            allowed_updates=[Update.CHAT_JOIN_REQUEST],
-            drop_pending_updates=True
-        )
-    except Exception as e:
-        logger.critical(f"Fatal error starting Telegram bot application: {e}", exc_info=True)
-        sys.exit(1)
+    logger.info("Starting Telegram Bot Application...")
+    
+    while True:
+        try:
+            telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
+            
+            # हैंडलर्स जोड़ें
+            telegram_app.add_handler(ChatMemberHandler(live_stream_instant_ban, ChatMemberHandler.CHAT_MEMBER))
+            
+            # एरर हैंडलर रजिस्टर किया ताकि स्क्रीनशॉट वाला 'No error handlers are registered' एरर कभी न आए
+            telegram_app.add_error_handler(error_handler)
+            
+            telegram_app.run_polling(
+                allowed_updates=[Update.CHAT_MEMBER, Update.MY_CHAT_MEMBER],
+                drop_pending_updates=True,
+                close_loop=False
+            )
+        except Conflict:
+            logger.warning("Conflict error: Another instance of this bot is running elsewhere! Pausing for 15 seconds...")
+            time.sleep(15)
+        except (NetworkError, TimedOut):
+            logger.warning("Network connection lost. Reconnecting in 3 seconds...")
+            time.sleep(3)
+        except Exception as e:
+            logger.critical(f"Critical error: {e}. Restarting in 5 seconds...")
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
-  
+    
