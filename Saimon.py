@@ -11,7 +11,7 @@ flask_app = Flask('')
 
 @flask_app.route('/')
 def home():
-    return "Galaxy Premium Ultra-Refined Bot is operating at 99.9999% stability!"
+    return "Zero-Error Production Bot is running successfully!"
 
 def run_flask():
     try:
@@ -32,19 +32,19 @@ logging.basicConfig(
     level=logging.INFO,
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("GalaxyBot")
+logger = logging.getLogger("ZeroErrorBot")
 
 # बॉट टोकन
 BOT_TOKEN = "8385272773:AAE50Y6-TkZ9FjxXcDV50i6OP1NlpMy5aSE"
 
-# ग्लोबल पावर स्टेटस (Thread-safe logic के साथ)
+# ग्लोबल पावर स्टेटस
 BOT_ACTIVE_STATUS = True
 
 # --- /start कमांड ---
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if BOT_ACTIVE_STATUS:
-            status_text = "🟢 **Bot STATUS: ULTRA ACTIVE** (Zero-Error Protection Enabled)"
+            status_text = "🟢 **Bot STATUS: ULTRA ACTIVE** (Protection Enabled)"
         else:
             status_text = "🔴 **Bot STATUS: STOPPED** (Currently paused)"
         
@@ -59,9 +59,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        if update and update.message:
-            await update.message.reply_text(
-                f"🤖 **Galaxy Premium Control Panel**\n\n{status_text}",
+        if update and update.effective_message:
+            await update.effective_message.reply_text(
+                f"🤖 **Production Control Panel**\n\n{status_text}",
                 reply_markup=reply_markup,
                 parse_mode="Markdown"
             )
@@ -80,14 +80,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
         if query.data == "btn_active":
             BOT_ACTIVE_STATUS = True
-            status_text = "🟢 **Bot STATUS: ULTRA ACTIVE** (Zero-Error Protection Enabled)"
+            status_text = "🟢 **Bot STATUS: ULTRA ACTIVE** (Protection Enabled)"
             keyboard = [
                 [InlineKeyboardButton("🟢 Active Bot", callback_data="btn_active"), InlineKeyboardButton("🔴 Stop Bot", callback_data="btn_stop")],
                 [InlineKeyboardButton("📊 Check Status", callback_data="btn_stats")]
             ]
             if query.message:
                 await query.edit_message_text(
-                    text=f"🤖 **Galaxy Premium Control Panel**\n\n{status_text}",
+                    text=f"🤖 **Production Control Panel**\n\n{status_text}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode="Markdown"
                 )
@@ -101,7 +101,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             ]
             if query.message:
                 await query.edit_message_text(
-                    text=f"🤖 **Galaxy Premium Control Panel**\n\n{status_text}",
+                    text=f"🤖 **Production Control Panel**\n\n{status_text}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode="Markdown"
                 )
@@ -117,12 +117,12 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         status_text = "🟢 Active" if BOT_ACTIVE_STATUS else "🔴 Stopped"
-        if update and update.message:
-            await update.message.reply_text(f"⚡ Galaxy Core Status: {status_text} | 99.99% Error-Free Protection")
+        if update and update.effective_message:
+            await update.effective_message.reply_text(f"⚡ Core Status: {status_text} | Error-Free Protection Active")
     except Exception as e:
         logger.error(f"Exception in stats_command: {e}", exc_info=True)
 
-# --- अल्ट्रा-ऑप्टिमाइज़्ड इंस्टेंट मेंबर और लाइव स्ट्रीम प्यूरिफिकेशन लॉजिक ---
+# --- इंस्टेंट मेंबर और लाइव स्ट्रीम प्यूरिफिकेशन लॉजिक (Fully Safe) ---
 async def handle_live_entry_and_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         if not BOT_ACTIVE_STATUS:
@@ -141,22 +141,20 @@ async def handle_live_entry_and_members(update: Update, context: ContextTypes.DE
         if not user or not user.id:
             return
 
-        # वैलिड मेंबर स्टेटस चेक
+        # सुरक्षित स्टेटस चेक
         valid_statuses = {ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED, ChatMemberStatus.ADMINISTRATOR}
         if new_member.status in valid_statuses:
             
             try:
-                # टेलीग्राम सर्वर से डायरेक्ट और सटीक मेंबर स्टेटस फेच करना
+                # बॉट परमिशन क्रैश से बचने के लिए try-except ब्लॉक के अंदर API कॉल
                 member_info = await context.bot.get_chat_member(chat_id, user.id)
                 if not member_info:
                     return
 
-                # 1. ओनर और एडमिन को पूर्ण सुरक्षा (फुल छूट)
                 admin_statuses = {ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR}
                 if member_info.status in admin_statuses:
                     return
 
-                # 2. प्रीमियम स्टेटस की डीप चेकिंग (Safe Attribute Extraction)
                 target_user = getattr(member_info, "user", None)
                 is_premium_target = getattr(target_user, "is_premium", False) if target_user else False
                 is_premium_local = getattr(user, "is_premium", False)
@@ -164,15 +162,16 @@ async def handle_live_entry_and_members(update: Update, context: ContextTypes.DE
                 is_user_premium = is_premium_target or is_premium_local
 
                 if is_user_premium:
-                    # प्रीमियम यूजर होने पर तुरंत और बिना किसी एरर के बैन एक्शन
-                    await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
-                    logger.warning(f"[GALAXY-INSTANT-BAN] Safely removed Premium user -> ID: {user.id} | Name: {getattr(user, 'full_name', 'Unknown')}")
+                    try:
+                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
+                        logger.warning(f"[INSTANT-BAN] Successfully removed Premium user -> ID: {user.id}")
+                    except Exception as ban_err:
+                        logger.warning(f"Could not ban user (Check Bot Admin Permissions): {ban_err}")
                 else:
-                    # नॉन-प्रीमियम नॉर्मल यूजर को एडमिन की तरह पूर्ण सुरक्षा
-                    logger.info(f"[GALAXY-SAFE-USER] Allowed normal user securely -> ID: {user.id}")
+                    logger.info(f"[SAFE-USER] Allowed normal user -> ID: {user.id}")
 
             except Exception as api_sub_err:
-                logger.warning(f"Sub-level API handling warning for user {user.id}: {api_sub_err}")
+                logger.warning(f"Sub-level API warning for user {user.id}: {api_sub_err}")
 
     except Exception as e:
         logger.error(f"Critical exception in handle_live_entry_and_members: {e}", exc_info=True)
@@ -184,15 +183,15 @@ def main():
     try:
         telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
         
-        # राऊटर और हैंडlers जोड़ना
         telegram_app.add_handler(CommandHandler("start", start_command))
         telegram_app.add_handler(CommandHandler("stats", stats_command))
         telegram_app.add_handler(CallbackQueryHandler(button_callback_handler))
+        
+        # ChatMemberHandler के साथ सही chat_member_types कॉन्स्टेंट जोड़ना
         telegram_app.add_handler(ChatMemberHandler(handle_live_entry_and_members, ChatMemberHandler.CHAT_MEMBER))
 
-        logger.info("Galaxy Premium Bot polling engine initiated with 0.0001% error margin...")
+        logger.info("Bot polling engine initiated successfully...")
         
-        # पोलिंग शुरू करना (पुराने पेंडिंग अपडेट्स को ड्रॉप करके)
         telegram_app.run_polling(
             allowed_updates=[Update.CHAT_MEMBER, Update.MY_CHAT_MEMBER, Update.MESSAGE, Update.CALLBACK_QUERY],
             drop_pending_updates=True,
