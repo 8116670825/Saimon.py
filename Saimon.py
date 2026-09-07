@@ -1,121 +1,117 @@
-import os
-import sys
 import logging
-import time
-from threading import Thread
-from flask import Flask
+import sys
+import os
+from flask import Flask, request
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ChatMemberHandler, ContextTypes
-from telegram.constants import ChatMemberStatus
-from telegram.error import NetworkError, TimedOut, Conflict
-
-# लॉगिंग सेटअप
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+from telegram.ext import (
+    ApplicationBuilder,
+    ChatMemberHandler,
+    ContextTypes,
 )
-logger = logging.getLogger(__name__)
+from telegram.constants import ChatMemberStatus
 
-# फ्लास्क हेल्थ-चेक सर्वर (रेंडर के लिए)
+# ==========================================
+# CONFIGURATION
+# ==========================================
+ALLOWED_CHAT_ID: int = -1002982567511
+BOT_TOKEN: str = "8385272773:AAE50Y6-TkZ9FjxXcDV50i6OP1NlpMy5aSE"
+PORT: int = int(os.environ.get("PORT", 8080))
+
+# अपने Render का लाइव URL यहाँ डालें (बिना आखिरी स्लैश के)
+WEBHOOK_URL: str = "https://newtelegram-4aor.onrender.com"
+
+# ==========================================
+# LOGGING
+# ==========================================
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s",
+    level=logging.INFO,
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("EnterpriseSentinel")
+
+# ==========================================
+# FLASK & TELEGRAM SETUP
+# ==========================================
 flask_app = Flask(__name__)
 
+# टेलीग्राम एप्लीकेशन बिल्ड करें
+application = ApplicationBuilder().token(BOT_TOKEN).build()
+
 @flask_app.route('/')
-def home() -> str:
-    return "Bot is active and running smoothly!", 200
+def health_check():
+    return "🚀 Enterprise Sentinel Webhook Operational", 200
 
-@flask_app.route('/healthz')
-def health_check() -> str:
-    return "OK", 200
-
-def run_flask() -> None:
+@flask_app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def telegram_webhook():
+    """ टेलीग्राम से आने वाले अपडेट्स को प्रोसेस करने के लिए """
     try:
-        port = int(os.environ.get("PORT", 10000))
-        flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-    except Exception as e:
-        logger.error(f"Flask server error: {e}")
-
-def keep_alive() -> None:
-    try:
-        thread = Thread(target=run_flask, daemon=True)
-        thread.start()
-    except Exception as e:
-        logger.error(f"Keep-alive thread error: {e}")
-
-# क्रेडेंशियल्स
-BOT_TOKEN = "8716958222:AAGwJB4bjQhcexbEo_rEdKAeZ-CwBwQzMok"
-OWNER_USER_ID = 8064395854  
-
-checked_users_cache = set()
-
-async def live_stream_instant_ban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    try:
-        if not update or not update.chat_member:
-            return
-
-        chat_member_update = update.chat_member
-        chat = chat_member_update.chat
-        new_member = chat_member_update.new_chat_member
+        json_data = request.get_json(force=True)
+        update = Update.de_json(json_data, application.bot)
         
-        if not chat or not new_member or not new_member.user:
+        import asyncio
+        asyncio.run(application.process_update(update))
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        return "Error", 500
+
+# ==========================================
+# HANDLER: चेक करेगा कि एक्सेप्ट होने के बाद यूजर प्रीमियम है या नहीं
+# ==========================================
+async def is_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        return member.status in {ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR}
+    except Exception:
+        return False
+
+async def process_chat_member_transition(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        member_update = update.chat_member
+        if not member_update or not member_update.new_chat_member:
             return
 
-        user = new_member.user
-        user_id = user.id
-
-        if user_id == OWNER_USER_ID or user_id in checked_users_cache:
+        chat_id = member_update.chat.id
+        if chat_id != ALLOWED_CHAT_ID:
             return
 
-        checked_users_cache.add(user_id)
+        state = member_update.new_chat_member
+        user = state.user
 
-        status = new_member.status
-        if status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+        # अगर यूजर चैनल में शामिल हो गया है (यानी रिक्वेस्ट एक्सेप्ट हो चुकी है)
+        if not user or state.status not in {ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED}:
             return
 
+        # अगर वह एडमिन है, तो उसे छोड़ दें
+        if await is_admin(context, chat_id, user.id):
+            return
+
+        # चेक करें कि क्या वह प्रीमियम यूजर है
         if getattr(user, "is_premium", False):
-            try:
-                await context.bot.ban_chat_member(chat_id=chat.id, user_id=user_id)
-                logger.info(f"Instant-banned premium user ID: {user_id} from chat ID: {chat.id}")
-            except Exception as ban_error:
-                logger.error(f"Could not ban user {user_id}: {ban_error}")
+            # अगर गलती से प्रीमियम यूजर एक्सेप्ट हो गया है, तो उसे तुरंत बैन कर दें
+            await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
+            logger.warning(f"[AUTO-PURGED] Accepted premium user banned -> ID: {user.id}, Name: {user.first_name}")
+        else:
+            logger.info(f"[ALLOWED] Non-premium user joined safely -> ID: {user.id}")
 
     except Exception as e:
-        logger.error(f"Error inside live_stream_instant_ban: {e}")
+        logger.error(f"Error in member transition: {e}")
 
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """लॉग्स में एरर को दबाने और क्रैश रोकने के लिए स्पेशल एरर हैंडलर"""
-    logger.error(msg="Exception while handling an update:", exc_info=context.error)
+# केवल मेंबर ट्रांजिट हैंडलर जोड़ें ताकि एक्सेप्ट होने पर यह काम करे
+application.add_handler(ChatMemberHandler(process_chat_member_transition, ChatMemberHandler.CHAT_MEMBER))
 
-def main() -> None:
-    keep_alive()
-    time.sleep(1)
-
-    logger.info("Starting Telegram Bot Application...")
-    
-    while True:
-        try:
-            telegram_app = ApplicationBuilder().token(BOT_TOKEN).build()
-            
-            # हैंडलर्स जोड़ें
-            telegram_app.add_handler(ChatMemberHandler(live_stream_instant_ban, ChatMemberHandler.CHAT_MEMBER))
-            
-            # एरर हैंडलर रजिस्टर किया ताकि स्क्रीनशॉट वाला 'No error handlers are registered' एरर कभी न आए
-            telegram_app.add_error_handler(error_handler)
-            
-            telegram_app.run_polling(
-                allowed_updates=[Update.CHAT_MEMBER, Update.MY_CHAT_MEMBER],
-                drop_pending_updates=True,
-                close_loop=False
-            )
-        except Conflict:
-            logger.warning("Conflict error: Another instance of this bot is running elsewhere! Pausing for 15 seconds...")
-            time.sleep(15)
-        except (NetworkError, TimedOut):
-            logger.warning("Network connection lost. Reconnecting in 3 seconds...")
-            time.sleep(3)
-        except Exception as e:
-            logger.critical(f"Critical error: {e}. Restarting in 5 seconds...")
-            time.sleep(5)
+# ==========================================
+# MAIN ENTRYPOINT
+# ==========================================
+async def setup_webhook():
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"Webhook set successfully to {WEBHOOK_URL}/{BOT_TOKEN}")
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(setup_webhook())
+    
+    logger.info("Starting Flask Server...")
+    flask_app.run(host="0.0.0.0", port=PORT, debug=False)
     
