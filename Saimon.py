@@ -102,12 +102,12 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             if query.message:
                 await query.edit_message_text(
                     text=f"🤖 **Galaxy Premium Control Panel**\n\n{status_text}",
-                    reply_markup=reply_markup,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
                     parse_mode="Markdown"
                 )
 
         elif query.data == "btn_stats":
-            current_state = "🟢 Active & Protecting" else "🔴 Stopped"
+            current_state = "🟢 Active & Protecting" if BOT_ACTIVE_STATUS else "🔴 Stopped"
             await query.answer(f"System State: {current_state}", show_alert=True)
 
     except Exception as e:
@@ -172,7 +172,6 @@ async def handle_live_entry_and_members(update: Update, context: ContextTypes.DE
                     logger.info(f"[GALAXY-SAFE-USER] Allowed normal user securely -> ID: {user.id}")
 
             except Exception as api_sub_err:
-                # अगर किसी स्पेसिफिक यूजर या नेटवर्क में माइनर दिक्कत हो, तो बॉट क्रैश नहीं होगा बल्कि लॉग करके आगे बढ़ेगा
                 logger.warning(f"Sub-level API handling warning for user {user.id}: {api_sub_err}")
 
     except Exception as e:
